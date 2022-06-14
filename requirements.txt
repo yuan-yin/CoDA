@@ -1,0 +1,10 @@
+torch
+scipy
+numpy
+torchdiffeq
+jupyter
+matplotlib
+autopep8
+torchvision
+torchviz
+sklearn
