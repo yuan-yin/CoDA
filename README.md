@@ -2,6 +2,7 @@
 
 Official code for [Generalizing to New Physical Systems via Context-Informed Dynamics Model](https://arxiv.org/pdf/2202.01889.pdf) (CoDA), accepted at ICML 2022.
 
+![gif](https://user-images.githubusercontent.com/11399307/173915761-8f0aa53c-90a6-429e-a752-49f3fc57e8dd.gif)
 
 ## Abstract
 
