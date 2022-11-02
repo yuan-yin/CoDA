@@ -1,3 +1,7 @@
+# MIT License
+#
+# Copyright (c) 2022 Matthieu Kirchmeyer & Yuan Yin
+
 import numpy as np
 from torchdiffeq import odeint
 from network import *

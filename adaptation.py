@@ -1,19 +1,19 @@
+# MIT License
+#
+# Copyright (c) 2022 Matthieu Kirchmeyer & Yuan Yin
+
 from torch import nn
 from torch import optim
 import torch.nn.functional as F
 import os
 from data import *
 from ode_model import Forecaster
-from utils import create_logger, DataLoaderODE, write_image, batch_transform, batch_transform_inverse, \
-    batch_transform_loss, save_numpy
+from utils import create_logger, DataLoaderODE, batch_transform, batch_transform_inverse, batch_transform_loss, save_numpy
 from datetime import datetime
 import getopt
 import sys
 import math
 from itertools import product
-
-# torch.backends.cudnn.benchmark = False
-# torch.use_deterministic_algorithms(True)
 
 dataset = "lotka"
 gpu = 0
@@ -22,20 +22,18 @@ path_model = ""
 regul = ""
 home = './results'
 model_home = "./results"
-opts, args = getopt.getopt(sys.argv[1:], "c:d:g:m:h:e:")
+opts, args = getopt.getopt(sys.argv[1:], "d:e:g:h:m:")
 for opt, arg in opts:
-    if opt == "-c":
-        l_c = float(arg)
     if opt == "-d":
         dataset = arg
-    if opt == "-g":
-        gpu = int(arg)
-    if opt == "-m":
-        model_home = arg
-    if opt == "-h":
-        home = arg
     if opt == "-e":
         model_exp = arg
+    if opt == "-g":
+        gpu = int(arg)
+    if opt == "-h":
+        home = arg
+    if opt == "-m":
+        model_home = arg
 
 now = datetime.now()
 ts = now.strftime("%Y%m%d_%H%M%S")
@@ -48,15 +46,12 @@ else:
 filename = f"{str(ts)}"
 path_results = os.path.join(home, dataset)
 path_checkpoint = os.path.join(path_results, ts)
-if model_home == 'pascal':
-    path_model = os.path.join('/data', 'yiny', model_home, 'exp', 'mask_code_net', dataset, model_exp, 'model_ind.pt')
-else:
-    path_model = os.path.join('/net', model_home, 'yiny', 'exp', 'mask_code_net', dataset, model_exp, 'model_ind.pt')
+path_model = os.path.join(model_home, dataset, model_exp, 'model_ind.pt')
 logger = create_logger(path_checkpoint, os.path.join(path_checkpoint, 'log'))
 os.makedirs(path_checkpoint, exist_ok=True)
 
 # Dataset param
-is_ode = any(name in dataset for name in ["lotka", "pendulum", "g_osci"])
+is_ode = any(name in dataset for name in ["lotka", "g_osci"])
 
 if dataset == "lotka":
     beta  = [0.625, 0.625, 1.125, 1.125]
@@ -70,7 +65,6 @@ if dataset == "lotka":
     dataset_test_params["n_data_per_env"] = 32
     dataset_test_params["group"] = "test"
     dataset_train, dataset_test = LotkaVolterraDataset(**dataset_train_params), LotkaVolterraDataset(**dataset_test_params)
-
 elif dataset == "g_osci":
     k1 = [85, 95]
     K1 = [0.625, 0.875]
@@ -84,15 +78,6 @@ elif dataset == "g_osci":
     dataset_test_params["n_data_per_env"] = 32
     dataset_test_params["group"] = "test"
     dataset_train, dataset_test = GlycolyticOscillatorDataset(**dataset_train_params), GlycolyticOscillatorDataset(**dataset_test_params)
-
-# elif dataset == "pendulum":
-#     dataset_train_params = {"n_data_per_env": 1, "t_horizon": 10, "dt": 0.5, "method": "RK45", "group": "train",
-#                             "params": [{"a": 0.6, "b": 0.65}]}   # {"a": 0.45, "b": 0.65}
-#     dataset_test_params = dict()
-#     dataset_test_params.update(dataset_train_params)
-#     dataset_test_params["n_data_per_env"] = 32
-#     dataset_test_params["group"] = "test"
-#     dataset_train, dataset_test = PendulumDataset(**dataset_train_params), PendulumDataset(**dataset_test_params)
 elif dataset == "gray":
     f = [0.033, 0.036]
     k = [0.059, 0.061]
@@ -107,7 +92,6 @@ elif dataset == "gray":
     dataset_test_params["buffer_file"] = f"{path_results}/gray_buffer_test_ada.shelve"
     dataset_test_params["group"] = "test"
     dataset_train, dataset_test = GrayScottDataset(**dataset_train_params), GrayScottDataset(**dataset_test_params)
-
 elif dataset == "navier":
     size = 32
     tt = torch.linspace(0, 1, size + 1)[0:-1]
@@ -135,15 +119,14 @@ epsilon = epsilon_t = 0.95
 update_epsilon_every = 30
 log_every = 10
 n_epochs = 120000
-lr = 1e-3  # 1e-2
+lr = 1e-3
 test_type = "ind"
 checkpoint = torch.load(f"{path_model}", map_location=device)
 forecaster_params = checkpoint["forecaster_params"]
 forecaster_params['n_env'] = n_env
 net = Forecaster(**forecaster_params, logger=logger, device=device)
 model_dict = net.state_dict()
-pretrained_dict = {k: v for k, v in checkpoint['model_state_dict'].items() if
-                (k in model_dict and not ("ghost_structure" in k or "codes" in k))}
+pretrained_dict = {k: v for k, v in checkpoint['model_state_dict'].items() if (k in model_dict and not ("ghost_structure" in k or "codes" in k))}
 model_dict.update(pretrained_dict)
 net.load_state_dict(model_dict)
 net = net.to(device)
@@ -171,10 +154,8 @@ last_train_loss = float('inf')
 loss_test_env_min, loss_relative_env_min, code_min = None, None, None
 done = False
 for epoch in range(n_epochs):
-    # if done:
-    #     break
-    for i, data in enumerate(dataloader_train, 0):  # (n_data_per_env/minibatch_size, [n_env*minibatch_size, state_c, t_horizon/dt])
-        state = data["state"].to(device)  # [n_env * minibatch_size, state_c, t_horizon / dt]
+    for i, data in enumerate(dataloader_train, 0):
+        state = data["state"].to(device)
         t = data["t"].to(device)
         targets = state
         if epoch == 0 and i == 0:
@@ -192,22 +173,16 @@ for epoch in range(n_epochs):
         optimizer.zero_grad()
 
         difference = abs(loss.item() - last_train_loss)
-        # print(f'{difference:.5e}')
         if difference < 1e-12:
             done = True
         last_train_loss = loss.item()
 
         if (epoch * len(dataloader_train) + i) % log_every == 0:
-            logger.info("Runid %s, Epoch %d, Iter %d, Loss Train: %.3e" %
-                    (ts, epoch + 1, i + 1, loss.item()))
+            logger.info("Runid %s, Epoch %d, Iter %d, Loss Train: %.3e" % (ts, epoch + 1, i + 1, loss.item()))
 
         if (epoch * (len(dataset_train) // (minibatch_size * n_env)) + (i + 1)) % update_epsilon_every == 0:
             epsilon_t *= epsilon
             logger.info(f"epsilon: {epsilon_t:.3}")
-            # logger.info("--Code--")
-            # logger.info(net.derivative.codes.data)
-            # logger.info("--------")
-
             loss_test = 0.0
             loss_test_env = torch.zeros(n_env)
             loss_relative = 0.0
@@ -253,12 +228,8 @@ codes_per_param = net.derivative.codes.data.detach()
 if dataset == 'lotka':
     logger.info(f'beta: {beta}, delta: {delta}, loss: {loss_test}, relative loss: {loss_relative}')
 if dataset == 'g_osci':
-    logger.info(f'k1: {k1_ii}, K1: {K1_ii}, loss: {loss_test}, relative loss: {loss_relative}')
-
+    logger.info(f'k1: {k1}, K1: {K1}, loss: {loss_test}, relative loss: {loss_relative}')
 
 torch.save(loss_per_param, os.path.join(path_checkpoint, f"loss.pt"))
 torch.save(loss_relative_per_param, os.path.join(path_checkpoint, f"loss_relative.pt"))
 torch.save(codes_per_param, os.path.join(path_checkpoint, f"codes.pt"))
-
-
-            

@@ -1,3 +1,7 @@
+# MIT License
+#
+# Copyright (c) 2022 Matthieu Kirchmeyer & Yuan Yin
+
 from torchvision.utils import make_grid
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import Sampler

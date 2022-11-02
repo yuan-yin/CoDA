@@ -11,18 +11,32 @@ Official code for [Generalizing to New Physical Systems via Context-Informed Dyn
 ## Usage
 
 ```bash
-python3 train.py -d lotka -h <EXP_HOME> -g <GPU_ID> -m 1e-6 -c 1e-4 -r l12m-l2c -x 2 -s 1
+python3 train.py -d <DATASET> -h <EXP_HOME> -g <GPU_ID> -m 1e-6 -c 1e-4 -r l12m-l2c -x 2 -s 1
 ```
+
+This training script trains a neural ODE/PDE forecaster given a set of environments.
+The script generates a run_id which is used for the adaptation script to adapt the forecaster to new environments.
 
 - `-d`: dataset name (`lokta`, `gray`, `navier`)
 - `-h`: experiment home directory
 - `-g`: CUDA GPU id
-- `-m`: HyperNet regularization coeffcient
-- `-c`: context regularization coeffcient
+- `-m`: HyperNet regularization coefficient
+- `-c`: context regularization coefficient
 - `-r`: regularization norm option (`l12m`: L1-L2 norm for the HyperNet, `l2c`: L2 norm for the contexts)
 - `-x`: context dimension
 - `-s`: random seed
 
+```bash
+python3 adaptation.py -d <DATASET> -e <RUN_ID> -g <GPU_ID>
+```
+
+The script adapts the forecaster to new environments.
+It loads the checkpoint of the model trained with the training script (run_id specified as input to -e).
+
+- `-d`: dataset name (`lokta`, `gray`, `navier`)
+- `-e`: run_id of the model to be adapted
+- `-g`: CUDA GPU id
+
 ## Notes
 
-This code contains an efficient parallel forward in all environments, implemented with group convolution. More explanation will be added in comments.
+This code contains an efficient parallel forward in all environments, implemented with group convolution and independent of the considered forecaster architecture.

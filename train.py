@@ -1,3 +1,7 @@
+# MIT License
+#
+# Copyright (c) 2022 Matthieu Kirchmeyer & Yuan Yin
+
 from torch import optim
 from data import *
 from ode_model import Forecaster
@@ -8,10 +12,6 @@ import sys, os
 import math
 import torch.nn.functional as F
 from sklearn.preprocessing import MinMaxScaler
-
-# os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
-# torch.backends.cudnn.benchmark = False
-# torch.use_deterministic_algorithms(True)
 
 log_every = 5
 dataset = "lotka"
@@ -50,10 +50,7 @@ for opt, arg in opts:
     if opt == "-x":
         code_c = int(arg)
 
-assert (code_c != None), 'Code dimension needed: add option -x [DIM_CODE]' 
-
-freeze_code = "freeze" in regul
-init_code_true = "true" in regul
+assert (code_c != None), 'Code dimension needed: add option -x [DIM_CODE]'
 is_layer = (layers[0] != -1)
 
 dataset_test_ood = None
@@ -70,8 +67,8 @@ path_results = os.path.join(home, dataset)
 path_checkpoint = os.path.join(path_results, ts)
 logger = create_logger(path_checkpoint, os.path.join(path_checkpoint, "log"))
 os.makedirs(path_checkpoint, exist_ok=True)
-scaler = MinMaxScaler(feature_range=(-0.02, 0.02))  # StandardScaler()  #
-is_ode = any(name in dataset for name in ["lotka", "pendulum", "g_osci"])
+scaler = MinMaxScaler(feature_range=(-0.02, 0.02))
+is_ode = any(name in dataset for name in ["lotka", "g_osci"])
 init_type = "default"
 set_rdm_seed(seed)
 codes_init = None
@@ -94,152 +91,11 @@ if dataset == "lotka":
             {"alpha": 0.5, "beta": 0.75, "gamma": 0.5, "delta": 1.0},
             {"alpha": 0.5, "beta": 1.0, "gamma": 0.5, "delta": 0.75},
             {"alpha": 0.5, "beta": 1.0, "gamma": 0.5, "delta": 1.0}]}
-    if init_code_true:
-        true_params = torch.stack(
-            [torch.tensor([list(params.values())])[0][1::2] for params in dataset_train_params["params"]])
-        scaler.fit(true_params)
-        transformed_params = scaler.transform(true_params)
-        codes_init = nn.Parameter(torch.tensor(transformed_params, dtype=torch.float))
     dataset_test_params = dict()
     dataset_test_params.update(dataset_train_params)
     dataset_test_params["n_data_per_env"] = 32
     dataset_test_params["group"] = "test"
     dataset_train, dataset_test = LotkaVolterraDataset(**dataset_train_params), LotkaVolterraDataset(**dataset_test_params)
-    # dataset_test_params_ood = dict()
-    # dataset_test_params_ood.update(dataset_test_params)
-    # dataset_test_params_ood["rdn_gen"] = 2
-    # dataset_test_ood = LotkaVolterraDataset(**dataset_test_params_ood)
-elif dataset == "lotka_50":
-    minibatch_size = 4
-    factor = 1.0
-    state_c = 2
-    init_gain = 0.15
-    method = "rk4"
-    params = np.random.normal(0.75, 0.15, 50 * 2)
-    dataset_train_params = {
-        "n_data_per_env": minibatch_size, "t_horizon": 10, "dt": 0.5, "method": "RK45", "group": "train",
-        "params": [{"alpha": 0.5, "beta": params[n], "gamma": 0.5, "delta": params[50 + n]} for n in range(50)]}
-    dataset_test_params = dict()
-    dataset_test_params.update(dataset_train_params)
-    dataset_test_params["n_data_per_env"] = 32
-    dataset_test_params["group"] = "test"
-    dataset_train, dataset_test = LotkaVolterraDataset(**dataset_train_params), LotkaVolterraDataset(**dataset_test_params)
-elif dataset == "lotka_100":
-    minibatch_size = 4
-    factor = 1.0
-    state_c = 2
-    init_gain = 0.15
-    method = "rk4"
-    params = np.random.normal(0.75, 0.15, 100 * 2)
-    dataset_train_params = {
-        "n_data_per_env": minibatch_size, "t_horizon": 10, "dt": 0.5, "method": "RK45", "group": "train",
-        "params": [{"alpha": 0.5, "beta": params[n], "gamma": 0.5, "delta": params[100 + n]} for n in range(100)]}
-    dataset_test_params = dict()
-    dataset_test_params.update(dataset_train_params)
-    dataset_test_params["n_data_per_env"] = 32
-    dataset_test_params["group"] = "test"
-    dataset_train, dataset_test = LotkaVolterraDataset(**dataset_train_params), LotkaVolterraDataset(**dataset_test_params)
-elif dataset == "lotka_4":
-    minibatch_size = 4
-    factor = 1.0
-    state_c = 2
-    init_gain = 0.15
-    method = "rk4"
-    dataset_train_params = {
-        "n_data_per_env": minibatch_size, "t_horizon": 10, "dt": 0.5, "method": "RK45", "group": "train",
-        "params": [
-            {"alpha": 0.5, "beta": 0.5, "gamma": 0.5, "delta": 0.5},
-            {"alpha": 0.5, "beta": 0.75, "gamma": 0.5, "delta": 0.5},
-            {"alpha": 0.5, "beta": 1.0, "gamma": 0.5, "delta": 0.5},
-            {"alpha": 0.5, "beta": 0.5, "gamma": 0.5, "delta": 0.75},
-            {"alpha": 0.5, "beta": 0.5, "gamma": 0.5, "delta": 1.0},
-            {"alpha": 0.5, "beta": 0.75, "gamma": 0.5, "delta": 0.75},
-            {"alpha": 0.5, "beta": 0.75, "gamma": 0.5, "delta": 1.0},
-            {"alpha": 0.5, "beta": 1.0, "gamma": 0.5, "delta": 0.75},
-            {"alpha": 0.5, "beta": 1.0, "gamma": 0.5, "delta": 1.0},
-
-            {"beta": 0.5, "alpha": 0.5, "delta": 0.5, "gamma": 0.5},
-            {"beta": 0.5, "alpha": 0.75, "delta": 0.5, "gamma": 0.5},
-            {"beta": 0.5, "alpha": 1.0, "delta": 0.5, "gamma": 0.5},
-            {"beta": 0.5, "alpha": 0.5, "delta": 0.5, "gamma": 0.75},
-            {"beta": 0.5, "alpha": 0.5, "delta": 0.5, "gamma": 1.0},
-            {"beta": 0.5, "alpha": 0.75, "delta": 0.5, "gamma": 0.75},
-            {"beta": 0.5, "alpha": 0.75, "delta": 0.5, "gamma": 1.0},
-            {"beta": 0.5, "alpha": 1.0, "delta": 0.5, "gamma": 0.75},
-            {"beta": 0.5, "alpha": 1.0, "delta": 0.5, "gamma": 1.0},
-        ]
-    }
-    if init_code_true:
-        true_params = torch.stack(
-            [torch.tensor([list(params.values())])[0] for params in dataset_train_params["params"]])
-        scaler.fit(true_params)
-        transformed_params = scaler.transform(true_params)
-        codes_init = nn.Parameter(torch.tensor(transformed_params, dtype=torch.float))
-    dataset_test_params = dict()
-    dataset_test_params.update(dataset_train_params)
-    dataset_test_params["n_data_per_env"] = 32
-    dataset_test_params["group"] = "test"
-    dataset_train, dataset_test = LotkaVolterraDataset(**dataset_train_params), LotkaVolterraDataset(**dataset_test_params)
-elif dataset == "lotka_17":
-    minibatch_size = 4
-    factor = 1.0
-    state_c = 2
-    init_gain = 0.15
-    method = "rk4"
-    circ_x = lambda centre, radius, radian: centre[0] + radius * math.cos(radian)
-    circ_y = lambda centre, radius, radian: centre[1] + radius * math.sin(radian)
-
-    centre = [0.75, 0.75]
-    centre_2 = [1.25, 0.75]
-    centre_3 = [1.25, 0.5]
-    radius = 0.25
-    code_c = 3
-
-    dataset_train_params = {
-        'n_data_per_env': 4, 't_horizon': 10,  "dt": 0.5, 'method': 'RK45', 'group': 'train',
-        'params': [{'alpha': 0.5, 'beta': circ_x(centre, radius, 2 * i * math.pi / 9), 'gamma': 0.5,
-              'delta': circ_y(centre, radius, 2 * i * math.pi / 9)} for i in range(9)] \
-            + [{'alpha': 0.5, 'beta': circ_x(centre_2, radius, 2 * i * math.pi / 9 + math.pi), 'gamma': 0.5,
-                'delta': circ_y(centre_2, radius, 2 * i * math.pi / 9 + math.pi)} for i in range(1,9)] # \
-            # + [{'alpha': 0.5, 'beta': circ_x(centre_3, radius, 2 * i * math.pi / 9 + math.pi),
-                 #'gamma': circ_y(centre_3, radius, 2 * i * math.pi / 9 + math.pi), 'delta': 0.75} for i in range(1,9)],
-    }
-    dataset_test_params = dict()
-    dataset_test_params.update(dataset_train_params)
-    dataset_test_params["n_data_per_env"] = 32
-    dataset_test_params["group"] = "test"
-    dataset_train, dataset_test = LotkaVolterraDataset(**dataset_train_params), LotkaVolterraDataset(**dataset_test_params)
-elif dataset == "pendulum":
-    minibatch_size = 8
-    factor = 1.0
-    state_c = 2
-    init_gain = 0.1
-    method = "rk4"
-    dataset_train_params = {
-        "n_data_per_env": 8, "t_horizon": 4, "dt": 0.2, "method": "RK45", "group": "train",
-        "params": [
-            {"b": 0.3, "m": 1, 'g':9.8, 'L':10.0},
-            {"b": 0.4, "m": 1, 'g':9.8, 'L':10.0},
-            {"b": 0.5, "m": 1, 'g':9.8, 'L':10.0},
-            {"b": 0.3, "m": 2, 'g':9.8, 'L':10.0},
-            {"b": 0.4, "m": 2, 'g':9.8, 'L':10.0},
-            {"b": 0.5, "m": 2, 'g':9.8, 'L':10.0},
-            {"b": 0.3, "m": 3, 'g':9.8, 'L':10.0},
-            {"b": 0.4, "m": 3, 'g':9.8, 'L':10.0},
-            {"b": 0.5, "m": 3, 'g':9.8, 'L':10.0}
-        ]
-    }
-    if init_code_true:
-        true_params = torch.stack(
-            [torch.tensor([list(params.values())])[0][:2] for params in dataset_train_params["params"]])
-        scaler.fit(true_params)
-        transformed_params = scaler.transform(true_params)
-        codes_init = nn.Parameter(torch.tensor(transformed_params, dtype=torch.float))
-    dataset_test_params = dict()
-    dataset_test_params.update(dataset_train_params)
-    dataset_test_params["n_data_per_env"] = 32
-    dataset_test_params["group"] = "test"
-    dataset_train, dataset_test = PendulumDataset(**dataset_train_params), PendulumDataset(**dataset_test_params)
 elif "g_osci" in dataset:
     minibatch_size = 32
     factor = 1.0
@@ -258,12 +114,6 @@ elif "g_osci" in dataset:
         'n_data_per_env': 32, 't_horizon': 1,  "dt": 0.05, 'method': 'RK45', 'group': 'train',
         'params': [{'J0': 2.5, 'k1': k1, 'k2': 6, 'k3': 16, 'k4': 100, 'k5': 1.28, 'k6': 12, 'K1': K1, 'q': 4, 'N': 1,
                     'A': 4, 'kappa': 13, 'psi': 0.1, 'k': 1.8} for k1 in k1_range for K1 in K1_range]}
-    if init_code_true:
-        unscaled_codes_init = [[list(params.values())[t] for t in [1, 7]] for params in dataset_train_params["params"]]
-        # unscaled_codes_init = np.ravel(unscaled_codes_init).reshape(-1, 1)
-        scaled_codes_init = scaler.fit_transform(unscaled_codes_init)
-        # scaled_codes_init = np.reshape(scaled_codes_init, (len(dataset_train_params["params"]), 2))
-        codes_init = nn.Parameter(torch.stack([torch.tensor(code).float() for code in scaled_codes_init]))
     dataset_test_params = dict()
     dataset_test_params.update(dataset_train_params)
     dataset_test_params["n_data_per_env"] = 32
@@ -274,91 +124,36 @@ elif dataset == "gray":
     factor = 5e-4
     state_c = 2
     init_gain = 1
-    # init_type = "orthogonal"
     method = "rk4"
-    # options['step_size'] = 1
     dataset_train_params = {
         "n_data_per_env": 1, "t_horizon": 400, "dt": 40, "method": "RK45", "size": 32, "n_block": 3, "dx": 1, "group": "train",
         "buffer_file": f"{path_results}/gray_buffer_train.shelve",
         "params": [
-            # {"f": 0.037, "k": 0.06, "r_u": 0.2097, "r_v": 0.105},
             {"f": 0.03, "k": 0.062, "r_u": 0.2097, "r_v": 0.105},
             {"f": 0.039, "k": 0.058, "r_u": 0.2097, "r_v": 0.105},
             {"f": 0.03, "k": 0.058, "r_u": 0.2097, "r_v": 0.105},
-            {"f": 0.039, "k": 0.062, "r_u": 0.2097, "r_v": 0.105}  # ,
-            # {"f": 0.0345, "k": 0.062, "r_u": 0.2097, "r_v": 0.105},
-            # {"f": 0.0345, "k": 0.058, "r_u": 0.2097, "r_v": 0.105}
+            {"f": 0.039, "k": 0.062, "r_u": 0.2097, "r_v": 0.105}
         ]
     }
-    if init_code_true:
-        with torch.no_grad():
-            true_params = torch.stack(
-                [torch.tensor([list(params.values())])[0][:2] for params in dataset_train_params["params"]])
-            scaler.fit(true_params)
-            transformed_params = scaler.transform(true_params)
-            codes_init = nn.Parameter(torch.tensor(transformed_params, dtype=torch.float)).to(device)
     dataset_test_params = dict()
     dataset_test_params.update(dataset_train_params)
     dataset_test_params["n_data_per_env"] = 32
     dataset_test_params["buffer_file"] = f"{path_results}/gray_buffer_test.shelve"
     dataset_test_params["group"] = "test"
     dataset_train, dataset_test = GrayScottDataset(**dataset_train_params), GrayScottDataset(**dataset_test_params)
-elif dataset == "wave":
-    minibatch_size = 1
-    factor = 1.e-3
-    state_c = 2
-    init_gain = 0.1
-    method = "rk4"
-    dataset_train_params = {
-        "n_data_per_env": 1, "t_horizon": 400, "dt": 40, "method": "RK45", "size": 32, "dx": 1, "group": "train",
-        "params": [
-            {"c": 300, "k": 50},
-            {"c": 350, "k": 50},
-            {"c": 400, "k": 50}
-        ]
-    }
-    dataset_test_params = dict()
-    dataset_test_params.update(dataset_train_params)
-    dataset_test_params["n_data_per_env"] = 32
-    dataset_test_params["group"] = "test"
-    dataset_train, dataset_test = WaveDataset(**dataset_train_params), WaveDataset(**dataset_test_params)
 elif dataset == "navier":
     minibatch_size = 16
     factor = 1
     size = 32
     state_c = 1
-    # init_type = "normal"
     init_gain = 0.1
     method = "euler"
     tt = torch.linspace(0, 1, size + 1)[0:-1]
     X, Y = torch.meshgrid(tt, tt)
-    # dataset_train_params = {
-    #     "n_data_per_env": 16, "t_horizon": 10, "dt_eval": 1, "method": "euler", "size": size, "group": "train",
-    #     "buffer_file": f"{path_results}/ns_buffer_train_3env_06-10_64.shelve",  # ns_buffer_train_30+10_1e-3.shelve
-    #     "params": [
-    #         ## {"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 0.25e-3},
-    #         # {"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 0.2e-3},
-    #         # {"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 0.3e-3},
-    #         # {"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 0.4e-3},
-    #         # {"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 0.5e-3},
-    #         {"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 6e-4},
-    #         # {"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 0.65e-3},
-    #         # {"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 0.7e-3},
-    #         # {"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 0.75e-3},
-    #         {"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 8e-4},
-    #         # {"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 0.85e-3},
-    #         #{"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 0.9e-3},
-    #         # {"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 0.95e-3},
-    #         {"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 1.0e-3},
-    #         ## {"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 2.5e-3}
-    #     ]
-    # }
     dataset_train_params = {
         "n_data_per_env": 16, "t_horizon": 10, "dt_eval": 1, "method": "euler", "size": size, "group": "train",
         "buffer_file": f"{path_results}/ns_buffer_train_3env_08-12_32.shelve",  # ns_buffer_train_30+10_1e-3.shelve
         "params": [
-            # {"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 6e-4},
-            # {"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 7e-4},
             {"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 8e-4},
             {"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 9e-4},
             {"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 1.0e-3},
@@ -366,19 +161,11 @@ elif dataset == "navier":
             {"f": 0.1 * (torch.sin(2 * math.pi * (X + Y)) + torch.cos(2 * math.pi * (X + Y))), "visc": 1.2e-3},
         ]
     }
-    if init_code_true:
-        with torch.no_grad():
-            true_params = torch.stack(
-                [torch.tensor([params['visc']]) for params in dataset_train_params["params"]])
-            print(true_params)
-            scaler.fit(true_params)
-            transformed_params = scaler.transform(true_params)
-            codes_init = nn.Parameter(torch.tensor(transformed_params, dtype=torch.float)).to(device)
     dataset_test_params = dict()
     dataset_test_params.update(dataset_train_params)
     dataset_test_params["n_data_per_env"] = 32
     dataset_test_params["group"] = "test"
-    dataset_test_params["buffer_file"] = f"{path_results}/ns_buffer_test_3env_08-12_32.shelve"  # ns_buffer_test_30+10_1e-3.shelve
+    dataset_test_params["buffer_file"] = f"{path_results}/ns_buffer_test_3env_08-12_32.shelve"
     dataset_train, dataset_test = NavierStokesDataset(**dataset_train_params), NavierStokesDataset(**dataset_test_params)
 else:
     raise Exception(f"{dataset} does not exist")
@@ -390,7 +177,7 @@ if dataset_test_ood:
     dataloader_test_ood = DataLoaderODE(dataset_test_ood, minibatch_size, n_env, is_train=False)
 
 # Forecaster
-epsilon = epsilon_t = 0.99  # if is_ode else 0.98
+epsilon = epsilon_t = 0.99
 update_epsilon_every = 30
 if dataset == "navier":
     update_epsilon_every = 15
@@ -411,7 +198,7 @@ forecaster_params = {
     "htype": 'hyper',
     "options": options,
 }
-lr = 1e-3  # 1e-2
+lr = 1e-3
 nl = forecaster_params["nl"]
 net = Forecaster(**forecaster_params, logger=logger, codes_init=codes_init, device=device)
 init_weights(net, init_type=init_type, init_gain=init_gain)
@@ -427,8 +214,6 @@ logger.info(f"run_id: {ts}")
 if cuda:
     logger.info(f"gpu_id: {gpu_id}")
 logger.info(f"dataset: {dataset}")
-logger.info(f"freeze_code: {freeze_code}")
-logger.info(f"init_code_true: {init_code_true}")
 logger.info(f"is_layer: {is_layer}")
 logger.info(f"regul: {regul}")
 logger.info(f"l_m: {l_m}")
@@ -445,18 +230,13 @@ logger.info(f"n_params forecaster: {count_parameters(net)}")
 logger.info(f"n_params net_root.net: {count_parameters(net.derivative.net_root)}")
 
 # Params Logs
-if freeze_code:
-    for name, param in net.named_parameters():
-        if param.requires_grad and ("code" in name):
-            param.requires_grad = False
-        logger.info(f"{name}, {param.requires_grad}")
 logger.info(f"net parameters: {dict(net.named_parameters()).keys()}")
 
 # Train
 loss_test_min_ind, loss_test_min_ood, loss_relative_min = float('inf'), float('inf'), float('inf')
 for epoch in range(n_epochs):
-    for i, data in enumerate(dataloader_train, 0):  # (n_data_per_env/minibatch_size, [n_env*minibatch_size, state_c, t_horizon/dt])
-        state = data["state"].to(device)  # [n_env * minibatch_size, state_c, t_horizon / dt, h, w]
+    for i, data in enumerate(dataloader_train, 0):
+        state = data["state"].to(device)
         t = data["t"].to(device)
         targets = state
         if epoch == 0 and i == 0:
@@ -496,7 +276,6 @@ for epoch in range(n_epochs):
             loss_reg_row += torch.norm(cosines, dim=0).sum()
 
         # Total
-
         tot_loss = loss + l_m * (loss_reg_row + loss_reg_col) + l_t * loss_reg_theta + l_c * loss_reg_code
         tot_loss.backward()
         torch.nn.utils.clip_grad_norm_(net.parameters(), 1.)
@@ -531,13 +310,9 @@ for epoch in range(n_epochs):
                         loss_test += criterion(outputs, targets)
                         raw_loss_relative = torch.abs(outputs - targets) / torch.abs(targets)
                         loss_relative += raw_loss_relative[~(torch.isnan(raw_loss_relative))].mean()
-                        # loss_relative += (torch.abs(outputs - targets) / (torch.abs(targets) + 1e-6)).mean()
                     loss_test /= j + 1
                     loss_relative /= j + 1
-                    # loss_env_norm = [x.numpy() / (j + 1) for x in loss_env]
-                    # loss_test_tot = np.mean(loss_env_norm)
                     logger.info(f"loss_test: {loss_test}, loss_relative: {loss_relative}")
-                    # logger.info(f"loss_env_norm: {loss_env_norm}")
 
                     loss_test_min = loss_test_min_ind if test_type == "ind" else loss_test_min_ood
                     if loss_test_min > loss_test:

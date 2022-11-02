@@ -1,3 +1,7 @@
+# MIT License
+#
+# Copyright (c) 2022 Matthieu Kirchmeyer & Yuan Yin
+
 import torch
 from torch import nn
 from utils import *
