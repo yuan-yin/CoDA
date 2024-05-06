@@ -84,7 +84,7 @@ class Forecaster(nn.Module):
             start_i, end_i = 0, None
             res = []
             for i, eval_point in enumerate(eval_points):
-                if eval_point is True:
+                if eval_point == True:
                     end_i = i + 1
                     t_seg = t[start_i:end_i + 1]
                     res_seg = self.int_(self.derivative, y0=y[start_i], t=t_seg,
